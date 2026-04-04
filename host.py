@@ -7,7 +7,7 @@ import tensorflow as tf
 import numpy as np
 import requests
 from streamlit_lottie import st_lottie
-with open(r'bin_best.pkl', 'rb') as f:
+with open(r'best_bins_weights.pkl', 'rb') as f:
     loaded_weights = pickle.load(f)
 print("wallahi")
 def loadurl(url):
@@ -24,7 +24,7 @@ def buildmodel():
     v = layers.Dense(128, activation='relu', name='v_dense')(shared)
     v = layers.Dropout(0.5)(v)
     v_out = layers.Dense(1, activation='sigmoid', name='validity_out')(v)
-    ov = layers.Dense(128, activation='relu',name='ov_dense')(shared)
+    ov = layers.Dense(128, activation='relu', name='ov_dense')(shared)
     ov = layers.Dropout(0.5)(ov)
     ov_out = layers.Dense(1, activation='sigmoid', name='overflow_out')(ov)
     return models.Model(inputs=img_in, outputs=[v_out, ov_out])
@@ -33,7 +33,6 @@ model.get_layer('v_dense').set_weights(loaded_weights['v_dense'])
 model.get_layer('validity_out').set_weights(loaded_weights['v_out'])
 model.get_layer('ov_dense').set_weights(loaded_weights['ov_dense'])
 model.get_layer('overflow_out').set_weights(loaded_weights['ov_out'])
-
 
 st.set_page_config(page_title="DMC Overfill",layout='wide')
 with st.container():
@@ -67,7 +66,7 @@ with st.container():
             predictions = model.predict(img_dims)
             valid_score = predictions[0][0][0]
             overflow_score = predictions[1][0][0]
-            dmc_call= (valid_score > 0.5) * (overflow_score > 0.5)
+            dmc_call= (valid_score > 0.61) * (overflow_score > 0.55)
             valid_percent = valid_score * 100
             over_percent = overflow_score * 100
     with left_col:
@@ -78,6 +77,7 @@ with st.container():
         st.write("Validity Percentage Confidence :",valid_percent)
         st.write("Overflow Percentage Confidence :",over_percent)
         st.write("Final Verdict on Notification : ",dmc_call)
+        st.write("Thank's for playing your part in keeping the campus clean!")
         with st.container():
             col1,col2,col3 = st.columns([1,2,1])
             with col2:
