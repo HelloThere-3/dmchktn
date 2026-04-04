@@ -7,7 +7,7 @@ import tensorflow as tf
 import numpy as np
 import requests
 from streamlit_lottie import st_lottie
-with open(r'bin_weight1.pkl', 'rb') as f:
+with open(r'bin_best.pkl', 'rb') as f:
     loaded_weights = pickle.load(f)
 print("wallahi")
 def loadurl(url):
@@ -21,16 +21,18 @@ def buildmodel():
     bckbn = EfficientNetB0(include_top=False, weights='imagenet', input_tensor=img_in)
     bckbn.trainable = False
     shared = layers.GlobalAveragePooling2D()(bckbn.output)
-    v = layers.Dense(128, activation='relu')(shared)
+    v = layers.Dense(128, activation='relu', name='v_dense')(shared)
     v = layers.Dropout(0.5)(v)
     v_out = layers.Dense(1, activation='sigmoid', name='validity_out')(v)
-    ov = layers.Dense(128, activation='relu')(shared)
+    ov = layers.Dense(128, activation='relu',name='ov_dense')(shared)
     ov = layers.Dropout(0.5)(ov)
     ov_out = layers.Dense(1, activation='sigmoid', name='overflow_out')(ov)
     return models.Model(inputs=img_in, outputs=[v_out, ov_out])
 model = buildmodel()
-model.get_layer('validity_out').set_weights(loaded_weights['validity_head'])
-model.get_layer('overflow_out').set_weights(loaded_weights['overflow_head'])
+model.get_layer('v_dense').set_weights(loaded_weights['v_dense'])
+model.get_layer('validity_out').set_weights(loaded_weights['v_out'])
+model.get_layer('ov_dense').set_weights(loaded_weights['ov_dense'])
+model.get_layer('overflow_out').set_weights(loaded_weights['ov_out'])
 
 
 st.set_page_config(page_title="DMC Overfill",layout='wide')
