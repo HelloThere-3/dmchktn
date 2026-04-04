@@ -81,7 +81,7 @@ with st.container():
         st.write("File's Uploaded :", Uploaded)
         st.write("Validity Percentage Confidence :",valid_percent)
         st.write("Overflow Percentage Confidence :",over_percent)
-        st.write("Final Verdict on Notification : ",dmc_call)
+        st.write("Final Verdict on Should DMC be notified : ",dmc_call)
         st.write("Thank's for playing your part in keeping the campus clean! :wastebasket:")
         with st.container():
             col1,col2,col3 = st.columns([1,2,1])
