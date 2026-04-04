@@ -7,7 +7,7 @@ import tensorflow as tf
 import numpy as np
 import requests
 from streamlit_lottie import st_lottie
-with open(r'C:\Users\Kiran\PycharmProjects\PythonProject\Projects\bin_heads_weights.pkl', 'rb') as f:
+with open(r'bin_heads_weights.pkl', 'rb') as f:
     loaded_weights = pickle.load(f)
 print("wallahi")
 def loadurl(url):
