@@ -1,3 +1,7 @@
+'''
+MADE BY GITHUB USER: HelloThere-3 & Keke47
+Dataset: Roboflow allinone v1
+'''
 import streamlit as st
 import PIL
 import pickle
