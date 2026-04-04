@@ -36,6 +36,7 @@ model.get_layer('overflow_out').set_weights(loaded_weights['ov_out'])
 
 st.set_page_config(page_title="DMC Overfill",layout='wide')
 with st.container():
+    st.write("use firefox for best experience :exclamation:")
     left_col, right_col = st.columns(2)
     dmc_call = None
     Uploaded = None
@@ -77,7 +78,7 @@ with st.container():
         st.write("Validity Percentage Confidence :",valid_percent)
         st.write("Overflow Percentage Confidence :",over_percent)
         st.write("Final Verdict on Notification : ",dmc_call)
-        st.write("Thank's for playing your part in keeping the campus clean!")
+        st.write("Thank's for playing your part in keeping the campus clean! :wastebasket:")
         with st.container():
             col1,col2,col3 = st.columns([1,2,1])
             with col2:
