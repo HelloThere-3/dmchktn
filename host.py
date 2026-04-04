@@ -71,7 +71,7 @@ with st.container():
             predictions = model.predict(img_dims)
             valid_score = predictions[0][0][0]
             overflow_score = predictions[1][0][0]
-            dmc_call= (valid_score > 0.62) * (overflow_score > 0.55)
+            dmc_call= (valid_score > 0.61) * (overflow_score > 0.55)
             valid_percent = valid_score * 100
             over_percent = overflow_score * 100
     with left_col:
@@ -79,7 +79,7 @@ with st.container():
         st.title("IITK DMC Overfill Portal")
         st.write("To intimate DMC utilities, upload or click a picture of Overfilled Dustbin area:")
         st.write("File's Uploaded :", Uploaded)
-        st.write("Validity Percentage Confidence :",valid_percent, valid_percent > 62)
+        st.write("Validity Percentage Confidence :",valid_percent, valid_percent > 61)
         st.write("Overflow Percentage Confidence :",over_percent, over_percent > 55)
         st.write("Final Verdict on Should DMC be notified : ",dmc_call)
         st.write("Thank's for playing your part in keeping the campus clean! :wastebasket:")
