@@ -145,3 +145,5 @@ with st.container():
             col1,col2,col3 = st.columns([1,2,1])
             with col2:
                 st_lottie(lottie,height=400)
+st.cache_data.clear()
+st.cache_resource.clear()
