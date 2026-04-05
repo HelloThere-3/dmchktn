@@ -11,9 +11,8 @@ import tensorflow as tf
 import numpy as np
 import requests
 from streamlit_lottie import st_lottie
-with open(r'C:\Users\Kiran\PycharmProjects\PythonProject\Projects\best_bins_weights.pkl', 'rb') as f:
+with open(r'best_bins_weights.pkl', 'rb') as f:
     loaded_weights = pickle.load(f)
-print("wallahi")
 def loadurl(url):
     r = requests.get(url)
     if r.status_code != 200:
@@ -79,7 +78,7 @@ def model2():
         )
         return model
     model = build_model()
-    model.load_weights(r'C:\Users\Kiran\PycharmProjects\PythonProject\Projects\best_weights.weights.h5')
+    model.load_weights(r'best_weights.weights.h5')
     return model
 
 st.set_page_config(page_title="DMC Overfill",layout='wide')
