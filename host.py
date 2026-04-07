@@ -13,7 +13,7 @@ import numpy as np
 import requests
 from streamlit_lottie import st_lottie
 import cv2
-with open(r'C:\Users\Kiran\PycharmProjects\PythonProject\Projects\best_bins_weights.pkl', 'rb') as f:
+with open(r'best_bins_weights.pkl', 'rb') as f:
     loaded_weights = pickle.load(f)
 print(cv2.__version__)
 def loadurl(url):
@@ -81,7 +81,7 @@ def model2():
         )
         return model
     model = build_model()
-    model.load_weights(r'C:\Users\Kiran\PycharmProjects\PythonProject\Projects\best_weights.weights.h5')
+    model.load_weights(r'best_weights.weights.h5')
     return model
 def model3():
     IMG_SIZE = 512
@@ -127,7 +127,7 @@ def model3():
         return model
 
     model = build_model()
-    model.load_weights(r'C:\Users\Kiran\PycharmProjects\PythonProject\Projects\tuned_weights.weights.h5')
+    model.load_weights(r'tuned_weights.weights.h5')
     return model
 st.set_page_config(page_title="DMC Overfill",layout='wide')
 with st.container():
