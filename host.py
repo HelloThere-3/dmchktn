@@ -7,12 +7,14 @@ import PIL
 import pickle
 from tensorflow.keras import layers, models
 from tensorflow.keras.applications import EfficientNetB0
+from tensorflow.keras import backend as K
 import tensorflow as tf
 import numpy as np
 import requests
 from streamlit_lottie import st_lottie
 with open(r'best_bins_weights.pkl', 'rb') as f:
     loaded_weights = pickle.load(f)
+print("wallahi")
 def loadurl(url):
     r = requests.get(url)
     if r.status_code != 200:
@@ -80,7 +82,52 @@ def model2():
     model = build_model()
     model.load_weights(r'best_weights.weights.h5')
     return model
+def model3():
+    IMG_SIZE = 512
+    def focal_loss(gamma=2.0, alpha=0.6):
+        def focal_loss_fixed(y_true, y_pred):
+            y_pred = K.clip(y_pred, K.epsilon(), 1.0 - K.epsilon())
+            bce = -y_true * K.log(y_pred) - (1.0 - y_true) * K.log(1.0 - y_pred)
+            p_t = (y_true * y_pred) + ((1.0 - y_true) * (1.0 - y_pred))
+            loss = K.pow(1.0 - p_t, gamma) * bce
+            return K.mean(loss)
 
+        return focal_loss_fixed
+
+    def weighted_bce(y_true, y_pred):
+        # weights: [valid, overflow]
+        weights = tf.constant([1.1, 1.0])
+        bce = tf.keras.backend.binary_crossentropy(y_true, y_pred)
+        return tf.reduce_mean(bce * weights)
+
+    def build_model():
+        base_model = EfficientNetB0(
+            weights='imagenet',
+            include_top=False,
+            input_shape=(IMG_SIZE, IMG_SIZE, 3)
+        )
+        base_model.trainable = False
+        inputs = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3))
+        x = base_model(inputs, training=False)
+        x = layers.GlobalAveragePooling2D()(x)
+        x = layers.Dense(64, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.01))(x)
+        x = layers.Dropout(0.5)(x)
+        outputs = layers.Dense(2, activation='sigmoid')(x)  # [valid, overflow]
+        model = models.Model(inputs, outputs)
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
+            loss=focal_loss(),  # weighted_bce,
+            metrics=[
+                tf.keras.metrics.BinaryAccuracy(),
+                tf.keras.metrics.Precision(),
+                tf.keras.metrics.Recall()
+            ]
+        )
+        return model
+
+    model = build_model()
+    model.load_weights(r'tuned_weights.weights.h5')
+    return model
 st.set_page_config(page_title="DMC Overfill",layout='wide')
 with st.container():
     st.write("use firefox for best experience :exclamation:")
@@ -90,14 +137,17 @@ with st.container():
     valid_percent = 0
     over_percent = 0
     with right_col:
-        option_model = st.radio("Choose ML model:", ("Model_1.0", "Model_2.0"), horizontal=True)
+        option_model = st.radio("Choose ML model:", ("Model_1.0", "Model_2.0","Model_Tuned"), horizontal=True)
         Chosen_Model = None
         if option_model == "Model_1.0":
             model = model1()
             Chosen_Model = "Model_1.0"
-        else:
+        elif option_model == "Model_2.0":
             model = model2()
             Chosen_Model = "Model_2.0"
+        else:
+            model = model3()
+            Chosen_Model = "Model_Tuned"
         option = st.radio("Choose source:", ("Upload Photo", "Take Photo"),horizontal=True)
         if option == "Upload Photo":
             uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
@@ -126,10 +176,16 @@ with st.container():
                 dmc_call= (valid_score > 0.47) * (overflow_score > 0.62)
                 valid_percent = valid_score * 100
                 over_percent = overflow_score * 100
-            else:
+            elif option_model == "Model_1.0":
                 valid_score = predictions[0][0][0]
                 overflow_score = predictions[1][0][0]
                 dmc_call = (valid_score > 0.61) * (overflow_score > 0.55)
+                valid_percent = valid_score * 100
+                over_percent = overflow_score * 100
+            else:
+                valid_score = predictions[0][0]
+                overflow_score = predictions[0][1]
+                dmc_call = (valid_score > 0.5) * (overflow_score > 0.48)
                 valid_percent = valid_score * 100
                 over_percent = overflow_score * 100
     with left_col:
