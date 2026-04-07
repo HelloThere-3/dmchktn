@@ -12,9 +12,10 @@ import tensorflow as tf
 import numpy as np
 import requests
 from streamlit_lottie import st_lottie
-with open(r'best_bins_weights.pkl', 'rb') as f:
+import cv2
+with open(r'C:\Users\Kiran\PycharmProjects\PythonProject\Projects\best_bins_weights.pkl', 'rb') as f:
     loaded_weights = pickle.load(f)
-print("wallahi")
+print(cv2.__version__)
 def loadurl(url):
     r = requests.get(url)
     if r.status_code != 200:
@@ -80,7 +81,7 @@ def model2():
         )
         return model
     model = build_model()
-    model.load_weights(r'best_weights.weights.h5')
+    model.load_weights(r'C:\Users\Kiran\PycharmProjects\PythonProject\Projects\best_weights.weights.h5')
     return model
 def model3():
     IMG_SIZE = 512
@@ -126,7 +127,7 @@ def model3():
         return model
 
     model = build_model()
-    model.load_weights(r'tuned_weights.weights.h5')
+    model.load_weights(r'C:\Users\Kiran\PycharmProjects\PythonProject\Projects\tuned_weights.weights.h5')
     return model
 st.set_page_config(page_title="DMC Overfill",layout='wide')
 with st.container():
@@ -166,7 +167,13 @@ with st.container():
             img_array = np.array(img)
             if img_array.shape[-1] == 4:
                 img = img.convert("RGB")
-                img_array = np.array(img)
+                img_array = np.array(img,dtype=np.uint8)
+            lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            l_clahe = clahe.apply(l)
+            lab = cv2.merge((l_clahe, a, b))
+            img_array = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
             img_array = tf.keras.applications.efficientnet.preprocess_input(img_array)
             img_dims = np.expand_dims(img_array, axis=0)
             predictions = model.predict(img_dims)
