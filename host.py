@@ -258,7 +258,7 @@ with st.container():
     valid_percent = 0
     over_percent = 0
     with right_col:
-        option_model = st.radio("Choose ML model:", ("Model_1.0", "Model_2.0","Model_Tuned","Final_Model"), horizontal=True)
+        option_model = st.radio("Choose ML model:", ("Model_1.0", "Model_2.0","Model_Tuned"), horizontal=True)
         Chosen_Model = None
         if option_model == "Model_1.0":
             model = model1()
