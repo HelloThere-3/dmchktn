@@ -269,9 +269,9 @@ with st.container():
         elif option_model == "Model_Tuned":
             model = model3()
             Chosen_Model = "Model_Tuned"
-        else:
-            model = model4()
-        option = st.radio("Choose source:", ("Upload Photo", "Take Photo"),horizontal=True)
+        #else:
+            #model = model4()
+        #option = st.radio("Choose source:", ("Upload Photo", "Take Photo"),horizontal=True)
         if option == "Upload Photo":
             uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
             Uploaded = True
