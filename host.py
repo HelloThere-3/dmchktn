@@ -5,14 +5,25 @@ Dataset: Roboflow allinone v1
 import streamlit as st
 import PIL
 import pickle
-from tensorflow.keras import layers, models
 from tensorflow.keras.applications import EfficientNetB0
+from tensorflow.keras import layers, models, regularizers
+from tensorflow.keras.applications import EfficientNetB3
 from tensorflow.keras import backend as K
 import tensorflow as tf
 import numpy as np
 import requests
 from streamlit_lottie import st_lottie
 import cv2
+
+
+############################################################################################################################
+
+#VISIT THE WEB LINK BELOW FOR AN ONLINE HOSTED SITE:
+
+# https://dmchktn-asz5iommxbns4z4rrs7kgu.streamlit.app/
+
+##############################################################################################################################
+
 with open(r'best_bins_weights.pkl', 'rb') as f:
     loaded_weights = pickle.load(f)
 print(cv2.__version__)
@@ -129,6 +140,115 @@ def model3():
     model = build_model()
     model.load_weights(r'tuned_weights.weights.h5')
     return model
+def model4():
+    #script_dir = os.path.dirname(__file__)
+    IMG_SIZE = 384
+
+    def focal_loss(gamma=2.0, alpha=0.65):
+        def focal_loss_fixed(y_true, y_pred):
+            y_pred = K.clip(y_pred, K.epsilon(), 1.0 - K.epsilon())
+            p_t = y_true * y_pred + (1.0 - y_true) * (1.0 - y_pred)
+            bce = -y_true * K.log(y_pred) - (1.0 - y_true) * K.log(1.0 - y_pred)
+            alpha_t = y_true * alpha + (1.0 - y_true) * (1.0 - alpha)
+            loss = alpha_t * K.pow(1.0 - p_t, gamma) * bce
+            return K.mean(loss)
+
+        return focal_loss_fixed
+
+    def patch_mil_head(feature_map, name, proj_dim=128, l2_val=1e-4):
+        from keras import ops  # keras.ops works in both tf.keras 2.x and Keras 3
+
+        reg = regularizers.l2(l2_val)
+
+        # ── projection ──
+        feat = layers.Conv2D(proj_dim, 1, padding="same", activation="relu",
+                             kernel_regularizer=reg, name=f"{name}_proj")(feature_map)
+        feat = layers.BatchNormalization(name=f"{name}_bn")(feat)
+        feat = layers.SpatialDropout2D(0.2, name=f"{name}_sdrop")(feat)
+
+        # ── attention gate: two-layer gated attention ──
+        v = layers.Conv2D(proj_dim, 1, activation="tanh", padding="same",
+                          kernel_regularizer=reg, name=f"{name}_V")(feat)
+        u = layers.Conv2D(proj_dim, 1, activation="sigmoid", padding="same",
+                          kernel_regularizer=reg, name=f"{name}_U")(feat)
+        vu = layers.Multiply(name=f"{name}_vu")([v, u])
+
+        # scalar attention score per patch  [B, H, W, 1]
+        attn_logits = layers.Conv2D(1, 1, padding="same",
+                                    name=f"{name}_attn_logits")(vu)
+
+        # ── FIX 1: remove tf.shape() calls — they are unused and illegal on KerasTensors ──
+        # flatten spatial dims → softmax → reshape back  [B, H*W, 1]
+        attn_flat = layers.Reshape((-1, 1), name=f"{name}_attn_flat")(attn_logits)
+        attn_soft = layers.Softmax(axis=1, name=f"{name}_attn_soft")(attn_flat)
+
+        # ── FIX 2: reshape back using Lambda + ops (static shape is None for dynamic spatial dims) ──
+        def _reshape_attn(inputs):
+            flat, orig = inputs
+            # orig shape: [B, H, W, 1]  — recover H, W at runtime via ops.shape
+            shape = ops.shape(orig)
+            return ops.reshape(flat, (shape[0], shape[1], shape[2], 1))
+
+        attn_map = layers.Lambda(
+            _reshape_attn, name=f"{name}_attn_map"
+        )([attn_soft, attn_logits])
+
+        # ── FIX 3: use ops.sum instead of tf.reduce_sum ──
+        weighted = layers.Multiply(name=f"{name}_weighted")([feat, attn_map])
+        pooled = layers.Lambda(
+            lambda x: ops.sum(x, axis=[1, 2]), name=f"{name}_pooled"
+        )(weighted)
+
+        # classification head
+        pooled = layers.Dense(64, activation="relu", kernel_regularizer=reg,
+                              name=f"{name}_fc")(pooled)
+        pooled = layers.Dropout(0.3, name=f"{name}_drop")(pooled)
+        out = layers.Dense(1, activation="sigmoid", name=name)(pooled)
+        return out, attn_map
+
+    # ── 5d. Assemble model ────────────────────────────────────────────────────────
+    def build_model(img_size=IMG_SIZE, trainable_backbone=False):
+        inputs = layers.Input(shape=(img_size, img_size, 3), name="input_image")
+
+        # x = make_augmentation()(inputs)  # augment only during .fit(); skipped at .predict()
+
+        backbone = EfficientNetB3(
+            weights="imagenet",
+            include_top=False,
+            input_shape=(img_size, img_size, 3),
+            # drop_connect_rate=0.3   # uncomment to add stochastic depth
+        )
+        backbone.trainable = trainable_backbone
+
+        features = backbone(inputs, training=False)  # keep BN stats frozen
+
+        # shared feature refinement
+        shared = layers.Conv2D(256, 3, padding="same", activation="relu",
+                               kernel_regularizer=regularizers.l2(1e-4),
+                               name="shared_conv")(features)
+        shared = layers.BatchNormalization(name="shared_bn")(shared)
+        shared = layers.SpatialDropout2D(0.2, name="shared_sdrop")(shared)
+
+        valid_out, valid_attn = patch_mil_head(shared, "valid")
+        overflow_out, overflow_attn = patch_mil_head(shared, "overflow")
+
+        outputs = layers.Concatenate(name="predictions")([valid_out, overflow_out])
+
+        model = models.Model(inputs, outputs, name="PatchMIL_EfficientNetB3")
+
+        # attention sub-models for visualisation
+        attn_model = models.Model(
+            inputs,
+            [valid_attn, overflow_attn],
+            name="attention_maps"
+        )
+
+        return model, attn_model
+
+    model, attn_model = build_model()
+    model.load_weights(r'patchmil_efficientnetb3_final.weights.h5')
+    return model
+
 st.set_page_config(page_title="DMC Overfill",layout='wide')
 with st.container():
     st.write("use firefox for best experience :exclamation:")
@@ -138,7 +258,7 @@ with st.container():
     valid_percent = 0
     over_percent = 0
     with right_col:
-        option_model = st.radio("Choose ML model:", ("Model_1.0", "Model_2.0","Model_Tuned"), horizontal=True)
+        option_model = st.radio("Choose ML model:", ("Model_1.0", "Model_2.0","Model_Tuned","Final_Model"), horizontal=True)
         Chosen_Model = None
         if option_model == "Model_1.0":
             model = model1()
@@ -146,9 +266,11 @@ with st.container():
         elif option_model == "Model_2.0":
             model = model2()
             Chosen_Model = "Model_2.0"
-        else:
+        elif option_model == "Model_Tuned":
             model = model3()
             Chosen_Model = "Model_Tuned"
+        else:
+            model = model4()
         option = st.radio("Choose source:", ("Upload Photo", "Take Photo"),horizontal=True)
         if option == "Upload Photo":
             uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
@@ -162,39 +284,64 @@ with st.container():
                 image = PIL.Image.open(uploaded_file)
                 image.resize((800,800))
                 st.image(image, caption="Bounded Image", width=300,)
-            img = PIL.Image.open(uploaded_file)
-            img = img.resize((512,512))
-            img_array = np.array(img)
-            if img_array.shape[-1] == 4:
-                img = img.convert("RGB")
-                img_array = np.array(img,dtype=np.uint8)
-            lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
-            l, a, b = cv2.split(lab)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            l_clahe = clahe.apply(l)
-            lab = cv2.merge((l_clahe, a, b))
-            img_array = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
-            img_array = tf.keras.applications.efficientnet.preprocess_input(img_array)
-            img_dims = np.expand_dims(img_array, axis=0)
-            predictions = model.predict(img_dims)
-            if option_model == "Model_2.0":
-                valid_score = predictions[0][0]
-                overflow_score = predictions[0][1]
-                dmc_call= (valid_score > 0.47) * (overflow_score > 0.62)
-                valid_percent = valid_score * 100
-                over_percent = overflow_score * 100
-            elif option_model == "Model_1.0":
-                valid_score = predictions[0][0][0]
-                overflow_score = predictions[1][0][0]
-                dmc_call = (valid_score > 0.61) * (overflow_score > 0.55)
+            if option_model=="Final_Model":
+                def apply_clahe(img_array_uint8):
+                    lab = cv2.cvtColor(img_array_uint8, cv2.COLOR_RGB2LAB)
+                    l, a, b = cv2.split(lab)
+                    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))  # softer than equalizeHist
+                    l_eq = clahe.apply(l)
+                    lab = cv2.merge((l_eq, a, b))
+                    return cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+
+                img = PIL.Image.open(uploaded_file)
+                img = img.resize((384, 384))
+                img_array = np.array(img)
+                if img_array.shape[-1] == 4:
+                    img = img.convert("RGB")
+                    img_array = np.array(img, dtype=np.uint8)
+                arr = apply_clahe(img_array)  # consistent CLAHE
+                arr = tf.keras.applications.efficientnet.preprocess_input(arr.astype("float32"))
+                inp = np.expand_dims(arr, axis=0)
+                predictions = model.predict(inp, verbose=0)[0]
+                valid_score = predictions[0]
+                overflow_score = predictions[1]
+                dmc_call = (valid_score > 0.54) * (overflow_score > 0.4)
                 valid_percent = valid_score * 100
                 over_percent = overflow_score * 100
             else:
-                valid_score = predictions[0][0]
-                overflow_score = predictions[0][1]
-                dmc_call = (valid_score > 0.5) * (overflow_score > 0.48)
-                valid_percent = valid_score * 100
-                over_percent = overflow_score * 100
+                img = PIL.Image.open(uploaded_file)
+                img = img.resize((512,512))
+                img_array = np.array(img)
+                if img_array.shape[-1] == 4:
+                    img = img.convert("RGB")
+                    img_array = np.array(img,dtype=np.uint8)
+                lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
+                l, a, b = cv2.split(lab)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                l_clahe = clahe.apply(l)
+                lab = cv2.merge((l_clahe, a, b))
+                img_array = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+                img_array = tf.keras.applications.efficientnet.preprocess_input(img_array)
+                img_dims = np.expand_dims(img_array, axis=0)
+                predictions = model.predict(img_dims)
+                if option_model == "Model_2.0":
+                    valid_score = predictions[0][0]
+                    overflow_score = predictions[0][1]
+                    dmc_call= (valid_score > 0.47) * (overflow_score > 0.62)
+                    valid_percent = valid_score * 100
+                    over_percent = overflow_score * 100
+                elif option_model == "Model_1.0":
+                    valid_score = predictions[0][0][0]
+                    overflow_score = predictions[1][0][0]
+                    dmc_call = (valid_score > 0.61) * (overflow_score > 0.55)
+                    valid_percent = valid_score * 100
+                    over_percent = overflow_score * 100
+                else:
+                    valid_score = predictions[0][0]
+                    overflow_score = predictions[0][1]
+                    dmc_call = (valid_score > 0.5) * (overflow_score > 0.48)
+                    valid_percent = valid_score * 100
+                    over_percent = overflow_score * 100
     with left_col:
         st.subheader("Welcome User :wave:")
         st.title("IITK DMC Overfill Portal")
@@ -210,3 +357,8 @@ with st.container():
                 st_lottie(lottie,height=400)
 st.cache_data.clear()
 st.cache_resource.clear()
+############################################################################################################
+# VISIT THE LINK BELOW FOR ONLINE HOSTED WEBSITE
+# https://dmchktn-asz5iommxbns4z4rrs7kgu.streamlit.app/
+
+#############################################################################################################
